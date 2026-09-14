@@ -1,4 +1,4 @@
-name: CloudOps CI
+name: CloudOps CI/CD
 
 on:
   push:
@@ -7,11 +7,23 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
+env:
+  BACKEND_IMAGE: ghcr.io/vishwaspg06/cloudops-backend
+  FRONTEND_IMAGE: ghcr.io/vishwaspg06/cloudops-frontend
+
 jobs:
-  build-and-test:
+  build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------------------------
+      # Source Code
+      # ---------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -19,6 +31,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      # ---------------------------
+      # Backend CI
+      # ---------------------------
 
       - name: Install backend dependencies
         working-directory: backend
@@ -33,7 +49,11 @@ jobs:
         run: |
           node server.js &
           sleep 5
-          curl --fail http://localhost:5000/
+          curl --fail http://localhost:5000/health
+
+      # ---------------------------
+      # Frontend CI
+      # ---------------------------
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -43,11 +63,94 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      # ---------------------------
+      # Docker Build
+      # ---------------------------
+
       - name: Build backend Docker image
-        run: docker build -t cloudops-backend:ci ./backend
+        run: |
+          docker build -t cloudops-backend:ci ./backend
 
       - name: Build frontend Docker image
-        run: docker build -t cloudops-frontend:ci ./frontend
+        run: |
+          docker build -t cloudops-frontend:ci ./frontend
+
+      # ---------------------------
+      # Docker Runtime Test
+      # ---------------------------
+
+      - name: Run backend container and test health
+        run: |
+          docker run -d \
+            --name cloudops-backend \
+            -p 5001:5000 \
+            cloudops-backend:ci
+
+          sleep 5
+
+          docker ps -a
+          docker logs cloudops-backend
+
+          curl --fail http://localhost:5001/health
+
+          docker rm -f cloudops-backend
+
+      # ---------------------------
+      # Security Scanning
+      # ---------------------------
+
+      - name: Scan backend image with Trivy
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: cloudops-backend:ci
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Scan frontend image with Trivy
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: cloudops-frontend:ci
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+
+      # ---------------------------
+      # GitHub Container Registry
+      # ---------------------------
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag Docker images for GHCR
+        if: github.event_name == 'push'
+        run: |
+          docker tag cloudops-backend:ci $BACKEND_IMAGE:latest
+          docker tag cloudops-backend:ci $BACKEND_IMAGE:${{ github.sha }}
+
+          docker tag cloudops-frontend:ci $FRONTEND_IMAGE:latest
+          docker tag cloudops-frontend:ci $FRONTEND_IMAGE:${{ github.sha }}
+
+      - name: Push Docker images to GHCR
+        if: github.event_name == 'push'
+        run: |
+          docker push $BACKEND_IMAGE:latest
+          docker push $BACKEND_IMAGE:${{ github.sha }}
+
+          docker push $FRONTEND_IMAGE:latest
+          docker push $FRONTEND_IMAGE:${{ github.sha }}
+
+      # ---------------------------
+      # Kubernetes - kind
+      # ---------------------------
+
       - name: Create kind Kubernetes cluster
         uses: helm/kind-action@v1
         with:
@@ -72,6 +175,11 @@ jobs:
           kubectl get pods
           kubectl get deployments
           kubectl get services
+
+      # ---------------------------
+      # Kubernetes Service Testing
+      # ---------------------------
+
       - name: Test Kubernetes services
         run: |
           kubectl port-forward service/cloudops-backend-service 5002:5000 &
@@ -87,11 +195,3 @@ jobs:
 
           kill $BACKEND_PF_PID
           kill $FRONTEND_PF_PID
-
-      - name: Run backend container and test health
-        run: |
-          docker run -d --name cloudops-backend -p 5001:5000 cloudops-backend:ci
-          sleep 5
-          docker ps -a
-          docker logs cloudops-backend
-          curl --fail http://localhost:5001/health
