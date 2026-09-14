@@ -72,6 +72,21 @@ jobs:
           kubectl get pods
           kubectl get deployments
           kubectl get services
+      - name: Test Kubernetes services
+        run: |
+          kubectl port-forward service/cloudops-backend-service 5002:5000 &
+          BACKEND_PF_PID=$!
+
+          kubectl port-forward service/cloudops-frontend-service 8080:80 &
+          FRONTEND_PF_PID=$!
+
+          sleep 5
+
+          curl --fail http://localhost:5002/health
+          curl --fail http://localhost:8080/
+
+          kill $BACKEND_PF_PID
+          kill $FRONTEND_PF_PID
 
       - name: Run backend container and test health
         run: |
