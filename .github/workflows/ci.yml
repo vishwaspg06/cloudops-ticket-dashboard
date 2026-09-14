@@ -46,6 +46,8 @@ jobs:
       - name: Build backend Docker image
         run: docker build -t cloudops-backend:ci ./backend
 
+      - name: Build frontend Docker image
+        run: docker build -t cloudops-frontend:ci ./frontend
       - name: Run backend container and test health
         run: |
           docker run -d --name cloudops-backend -p 5001:5000 cloudops-backend:ci
