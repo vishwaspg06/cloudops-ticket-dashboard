@@ -125,7 +125,13 @@ app.delete("/api/tickets/:id", (req, res) => {
       });
     }
   );
+});app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    service: "cloudops-backend"
+  });
 });
+
 app.listen(PORT, () => {
   console.log(`CloudOps backend running on http://localhost:${PORT}`);
 });
