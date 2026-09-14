@@ -48,6 +48,31 @@ jobs:
 
       - name: Build frontend Docker image
         run: docker build -t cloudops-frontend:ci ./frontend
+      - name: Create kind Kubernetes cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: cloudops-ci
+
+      - name: Load Docker images into kind
+        run: |
+          kind load docker-image cloudops-backend:ci --name cloudops-ci
+          kind load docker-image cloudops-frontend:ci --name cloudops-ci
+
+      - name: Deploy application to Kubernetes
+        run: |
+          kubectl apply -f k8s/
+
+      - name: Wait for Kubernetes deployments
+        run: |
+          kubectl rollout status deployment/cloudops-backend --timeout=120s
+          kubectl rollout status deployment/cloudops-frontend --timeout=120s
+
+      - name: Show Kubernetes resources
+        run: |
+          kubectl get pods
+          kubectl get deployments
+          kubectl get services
+
       - name: Run backend container and test health
         run: |
           docker run -d --name cloudops-backend -p 5001:5000 cloudops-backend:ci
