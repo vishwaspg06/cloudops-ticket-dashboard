@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudops-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudops-frontend
+  template:
+    metadata:
+      labels:
+        app: cloudops-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cloudops-frontend:ci
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
