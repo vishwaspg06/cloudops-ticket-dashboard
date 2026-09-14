@@ -45,3 +45,9 @@ jobs:
 
       - name: Build backend Docker image
         run: docker build -t cloudops-backend:ci ./backend
+
+      - name: Run backend container and test health
+        run: |
+          docker run -d --name cloudops-backend -p 5000:5000 cloudops-backend:ci
+          sleep 5
+          curl --fail http://localhost:5000/health
